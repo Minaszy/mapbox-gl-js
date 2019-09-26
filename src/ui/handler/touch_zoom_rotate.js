@@ -1,15 +1,22 @@
 // @flow
 
 import DOM from '../../util/dom';
-import { bezier, bindAll } from '../../util/util';
+import {
+    bezier,
+    bindAll
+} from '../../util/util';
 import window from '../../util/window';
 import browser from '../../util/browser';
-import { Event } from '../../util/evented';
+import {
+    Event
+} from '../../util/evented';
 
 import type Map from '../map';
 import type Point from '@mapbox/point-geometry';
 import type LngLat from '../../geo/lng_lat';
-import type {TaskID} from '../../util/task_queue';
+import type {
+    TaskID
+} from '../../util/task_queue';
 
 const inertiaLinearity = 0.15,
     inertiaEasing = bezier(0, 0, inertiaLinearity, 1),
@@ -33,9 +40,15 @@ class TouchZoomRotateHandler {
     _startScale: number;
     _startBearing: number;
     _gestureIntent: 'rotate' | 'zoom' | void;
-    _inertia: Array<[number, number, Point]>;
+    _inertia: Array < [number, number, Point] > ;
     _lastTouchEvent: TouchEvent;
-    _frameId: ?TaskID;
+    _frameId: ? TaskID;
+    /**
+     * custom-zy
+     */
+    _startP0: any;
+    _startP1: any;
+    _startPitch: any;
 
     /**
      * @private
@@ -71,7 +84,9 @@ class TouchZoomRotateHandler {
      * @example
      *   map.touchZoomRotate.enable({ around: 'center' });
      */
-    enable(options: ?{around?: 'center'}) {
+    enable(options: ? {
+        around ? : 'center'
+    }) {
         if (this.isEnabled()) return;
         this._el.classList.add('mapboxgl-touch-zoom-rotate');
         this._enabled = true;
@@ -119,13 +134,21 @@ class TouchZoomRotateHandler {
         const p0 = DOM.mousePos(this._el, e.touches[0]),
             p1 = DOM.mousePos(this._el, e.touches[1]),
             center = p0.add(p1).div(2);
+        /**
+         * custom-zy
+         */
+        this._startP0 = p0;
+        this._startP1 = p1;
+        this._startPitch = this._map.getPitch();
 
         this._startVec = p0.sub(p1);
         this._startAround = this._map.transform.pointLocation(center);
         this._gestureIntent = undefined;
         this._inertia = [];
 
-        DOM.addEventListener(window.document, 'touchmove', this._onMove, {passive: false});
+        DOM.addEventListener(window.document, 'touchmove', this._onMove, {
+            passive: false
+        });
         DOM.addEventListener(window.document, 'touchend', this._onEnd);
     }
 
@@ -134,18 +157,40 @@ class TouchZoomRotateHandler {
             p1 = DOM.mousePos(this._el, e.touches[1]);
 
         const vec = p0.sub(p1);
+        /**
+         * custom-zy
+         */
         return {
             vec,
             center: p0.add(p1).div(2),
             scale: vec.mag() / this._startVec.mag(),
-            bearing: this._rotationDisabled ? 0 : vec.angleWith(this._startVec) * 180 / Math.PI
+            bearing: this._rotationDisabled ? 0 : vec.angleWith(this._startVec) * 180 / Math.PI,
+            p0,
+            p1
         };
     }
 
     _onMove(e: TouchEvent) {
         if (e.touches.length !== 2) return;
 
-        const {vec, scale, bearing} = this._getTouchEventData(e);
+        const {
+            vec,
+            scale,
+            bearing,
+            p0,
+            p1
+        } = this._getTouchEventData(e);
+        /**
+         * custom-zy
+         */
+        var Y0 = p0.y - this._startP0.y;
+        var Y1 = p1.y - this._startP1.y;
+        var b = (Y0 <= 0 && Y1 <= 0 || Y0 >= 0 && Y1 >= 0);
+        if (b) {
+            var diff = (Y0 + Y1) / 2 * 0.5;
+            this._map.setPitch(this._startPitch + diff);
+        }
+
 
         // Determine 'intent' by whichever threshold is surpassed first,
         // then keep that state for the duration of this gesture.
@@ -161,8 +206,12 @@ class TouchZoomRotateHandler {
             }
 
             if (this._gestureIntent) {
-                this._map.fire(new Event(`${this._gestureIntent}start`, { originalEvent: e }));
-                this._map.fire(new Event('movestart', { originalEvent: e }));
+                this._map.fire(new Event(`${this._gestureIntent}start`, {
+                    originalEvent: e
+                }));
+                this._map.fire(new Event('movestart', {
+                    originalEvent: e
+                }));
                 this._startVec = vec;
             }
         }
@@ -188,7 +237,11 @@ class TouchZoomRotateHandler {
             this._startBearing = tr.bearing;
         }
 
-        const {center, bearing, scale} = this._getTouchEventData(this._lastTouchEvent);
+        const {
+            center,
+            bearing,
+            scale
+        } = this._getTouchEventData(this._lastTouchEvent);
         const around = tr.pointLocation(center);
         const aroundPoint = tr.locationPoint(around);
 
@@ -200,15 +253,21 @@ class TouchZoomRotateHandler {
 
         tr.setLocationAtPoint(this._startAround, aroundPoint);
 
-        this._map.fire(new Event(gestureIntent, {originalEvent: this._lastTouchEvent}));
-        this._map.fire(new Event('move', {originalEvent: this._lastTouchEvent}));
+        this._map.fire(new Event(gestureIntent, {
+            originalEvent: this._lastTouchEvent
+        }));
+        this._map.fire(new Event('move', {
+            originalEvent: this._lastTouchEvent
+        }));
 
         this._drainInertiaBuffer();
         this._inertia.push([browser.now(), scale, center]);
     }
 
     _onEnd(e: TouchEvent) {
-        DOM.removeEventListener(window.document, 'touchmove', this._onMove, {passive: false});
+        DOM.removeEventListener(window.document, 'touchmove', this._onMove, {
+            passive: false
+        });
         DOM.removeEventListener(window.document, 'touchend', this._onEnd);
 
         const gestureIntent = this._gestureIntent;
@@ -225,7 +284,9 @@ class TouchZoomRotateHandler {
 
         if (!gestureIntent) return;
 
-        this._map.fire(new Event(`${gestureIntent}end`, { originalEvent: e }));
+        this._map.fire(new Event(`${gestureIntent}end`, {
+            originalEvent: e
+        }));
 
         this._drainInertiaBuffer();
 
@@ -233,7 +294,9 @@ class TouchZoomRotateHandler {
             map = this._map;
 
         if (inertia.length < 2) {
-            map.snapToNorth({}, { originalEvent: e });
+            map.snapToNorth({}, {
+                originalEvent: e
+            });
             return;
         }
 
@@ -246,7 +309,9 @@ class TouchZoomRotateHandler {
             p = last[2];
 
         if (scaleDuration === 0 || lastScale === firstScale) {
-            map.snapToNorth({}, { originalEvent: e });
+            map.snapToNorth({}, {
+                originalEvent: e
+            });
             return;
         }
 
@@ -274,7 +339,9 @@ class TouchZoomRotateHandler {
             easing: inertiaEasing,
             around: this._aroundCenter ? map.getCenter() : map.unproject(p),
             noMoveStart: true
-        }, { originalEvent: e });
+        }, {
+            originalEvent: e
+        });
     }
 
     _drainInertiaBuffer() {
